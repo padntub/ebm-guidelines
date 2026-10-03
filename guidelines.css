@@ -1,0 +1,15 @@
+/**
+ * guidelines.css
+ * Master CSS Entry Point cho Kho Guidelines & Nghiên Cứu Lâm Sàng CliniPortal
+ * Modular Architecture using @import
+ */
+
+@import url('css/guidelines-base.css');
+@import url('css/guidelines-components.css');
+@import url('css/guidelines-table.css');
+@import url('css/guidelines-modals.css');
+@import url('css/guidelines-analytics.css');
+@import url('css/guidelines-research.css');
+@import url('css/guidelines-timeline.css');
+
+

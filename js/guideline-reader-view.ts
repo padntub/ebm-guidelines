@@ -1,0 +1,1631 @@
+/**
+ * CliniPortal — Guidelines & Clinical Evidence Article Reader SPA View (TypeScript)
+ * Path: src/content/ebm/guidelines/guideline-reader-view.ts
+ * 
+ * Flagship Full-Width Clinical Guideline Reader:
+ * - Ultra-wide 100% expanded layout for high-density clinical review
+ * - Dynamic font sizing (A- / A+) and Width mode switcher (Ultra-Wide / Standard / Fullscreen)
+ * - Automatic script hydration for interactive calculators (PTS, Pain Scales, 18 Organ Systems)
+ * - Standardized EBM SOAP Note clipboard exporter & clean medical PDF printing
+ */
+
+import { CliniPortalThemeManager } from './core/theme-manager';
+import { cliniMdxEngine } from './core/mdx-engine';
+import { hydrateFlowchartViewers } from './core/flowchart-viewer';
+import { sendClinicalIntent } from './core/clinical-intent';
+
+export function renderGuidelineReader(slug: string): string {
+  // Normalize slug & base name cleanly
+  const baseSlugName = slug.replace(/\.(html|mdx)$/i, '');
+  const cleanSlug = `${baseSlugName}.mdx`;
+
+  // Retrieve saved preferences from localStorage
+  const savedWidthMode = typeof localStorage !== 'undefined' ? (localStorage.getItem('cp_reader_width') || 'wide') : 'wide';
+  const savedFontSize = typeof localStorage !== 'undefined' ? (localStorage.getItem('cp_reader_font_size') || '16') : '16';
+
+  // Trigger async fetch after container mounts to DOM
+  setTimeout(() => {
+    fetchAndHydrateGuideline(cleanSlug, baseSlugName);
+  }, 30);
+
+  return `
+    <div class="guideline-reader-wrapper animate-fade-in ${savedWidthMode === 'wide' ? 'reader-mode-wide' : 'reader-mode-standard'}" id="guideline-reader-wrapper" style="min-height: calc(100vh - 60px); background: var(--color-bg, #f0f4f8); transition: all 0.25s ease;">
+      
+      <!-- TOP CONTROL & BREADCRUMB PRO TOOLBAR (KHÔNG ĐÓNG BĂNG KHI CUỘN) -->
+      <header class="guideline-reader-toolbar" style="position: relative; z-index: 10; background: rgba(255, 255, 255, 0.96); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); border-bottom: 1px solid var(--color-border, #e2e8f0); padding: 0.65rem 1.5rem; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0.75rem; box-shadow: 0 2px 10px rgba(0,0,0,0.04); margin-bottom: 1.25rem; border-radius: 12px;">
+        
+        <!-- Breadcrumb & Document Info -->
+        <div style="display: flex; align-items: center; gap: 0.5rem; font-size: 0.85rem; color: var(--color-text-muted, #64748b); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 240px;">
+          <a href="#/ebm" style="color: var(--color-primary, #0284c7); text-decoration: none; font-weight: 700; display: inline-flex; align-items: center; gap: 5px;">
+            <i class="fa-solid fa-book-medical"></i> Y học Chứng cứ
+          </a>
+          <span>/</span>
+          <a href="#/ebm/kho-guidelines" style="color: var(--color-primary, #0284c7); text-decoration: none; font-weight: 700;">
+            Kho Guidelines
+          </a>
+          <span>/</span>
+          <span style="color: var(--color-text, #0f172a); font-weight: 800;" id="reader-breadcrumb-title">${baseSlugName}</span>
+        </div>
+
+        <!-- Pro Reader Settings Dropdown (Dark Mode, Font size, Width, Fullscreen, EBM Note, Print) -->
+        <div class="reader-toolbar-actions" style="display: flex; align-items: center; gap: 0.5rem; position: relative;">
+          
+          <div class="reader-settings-dropdown-wrapper" id="reader-settings-dropdown-wrapper" style="position: relative;">
+            <button class="btn btn-outline reader-settings-btn" id="reader-settings-toggle-btn" onclick="toggleReaderSettingsMenu(event)" aria-expanded="false" title="Cài đặt & Tiện ích đọc" style="padding: 0.45rem 0.95rem; border-radius: 8px; border: 1.5px solid var(--color-primary, #0284c7); font-size: 0.82rem; font-weight: 700; cursor: pointer; display: inline-flex; align-items: center; gap: 7px; background: rgba(2,132,199,0.08); color: var(--color-primary, #0284c7); box-shadow: 0 1px 3px rgba(0,0,0,0.04); transition: all 0.2s ease;">
+              <i class="fa-solid fa-gear" style="font-size: 0.95rem;"></i>
+              <span>Cài đặt</span>
+              <i class="fa-solid fa-chevron-down" style="font-size: 0.68rem; opacity: 0.7;"></i>
+            </button>
+
+            <!-- Dropdown Menu -->
+            <div class="reader-settings-menu" id="reader-settings-menu" style="display: none; position: absolute; right: 0; top: calc(100% + 8px); z-index: 220; min-width: 290px; background: var(--color-surface, #ffffff); border: 1px solid var(--color-border, #cbd5e1); border-radius: 14px; box-shadow: 0 12px 36px rgba(0,0,0,0.15); padding: 0.65rem; backdrop-filter: blur(12px);">
+              
+              <div style="padding: 0.4rem 0.6rem 0.5rem; font-size: 0.75rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; color: var(--color-text-muted, #64748b); border-bottom: 1px solid var(--color-border, #e2e8f0); margin-bottom: 0.4rem; display: flex; align-items: center; justify-content: space-between;">
+                <span>⚙️ Tùy chọn bài đọc</span>
+                <span style="font-size: 0.7rem; font-weight: 600; opacity: 0.75;">CliniPortal</span>
+              </div>
+
+              <!-- 1. Dark Mode Toggle -->
+              <button class="reader-menu-item" onclick="toggleReaderTheme(event)" style="width: 100%; display: flex; align-items: center; justify-content: space-between; padding: 0.6rem 0.75rem; border: none; background: transparent; border-radius: 8px; cursor: pointer; font-size: 0.84rem; color: var(--color-text, #0f172a); font-weight: 600; text-align: left; transition: background 0.15s;">
+                <span style="display: flex; align-items: center; gap: 9px;">
+                  <i class="fa-solid fa-moon" id="reader-menu-theme-icon" style="width: 18px; color: #8b5cf6; font-size: 0.95rem;"></i>
+                  <span id="reader-menu-theme-text">Chế độ Tối</span>
+                </span>
+                <span class="rx-tag" id="reader-menu-theme-tag" style="font-size: 0.7rem; padding: 2px 7px; border-radius: 6px; font-weight: 700;">Theme</span>
+              </button>
+
+              <!-- 2. Font Size Adjustment -->
+              <div style="display: flex; align-items: center; justify-content: space-between; padding: 0.5rem 0.75rem; border-radius: 8px; font-size: 0.84rem; color: var(--color-text, #0f172a); font-weight: 600;">
+                <span style="display: flex; align-items: center; gap: 9px;">
+                  <i class="fa-solid fa-font" style="width: 18px; color: var(--color-primary, #0284c7); font-size: 0.95rem;"></i>
+                  <span>Cỡ chữ đọc</span>
+                </span>
+                <div class="reader-btn-group" style="display: inline-flex; align-items: center; background: var(--color-surface, #ffffff); border: 1px solid var(--color-border, #cbd5e1); border-radius: 6px; overflow: hidden;">
+                  <button class="reader-icon-btn" onclick="adjustReaderFontSize(-1); event.stopPropagation();" title="Giảm cỡ chữ (A-)" style="padding: 0.28rem 0.55rem; border: none; background: none; color: var(--color-text, #334155); font-size: 0.75rem; font-weight: 800; cursor: pointer; border-right: 1px solid var(--color-border, #cbd5e1);">
+                    A-
+                  </button>
+                  <span id="reader-font-size-display" style="padding: 0 0.5rem; font-size: 0.74rem; font-weight: 700; font-family: monospace; color: var(--color-primary, #0284c7);">
+                    ${savedFontSize}px
+                  </span>
+                  <button class="reader-icon-btn" onclick="adjustReaderFontSize(1); event.stopPropagation();" title="Tăng cỡ chữ (A+)" style="padding: 0.28rem 0.55rem; border: none; background: none; color: var(--color-text, #334155); font-size: 0.75rem; font-weight: 800; cursor: pointer; border-left: 1px solid var(--color-border, #cbd5e1);">
+                    A+
+                  </button>
+                </div>
+              </div>
+
+              <!-- 3. Width Mode Toggle -->
+              <button class="reader-menu-item" onclick="toggleReaderWidthMode(); closeReaderSettingsMenu();" style="width: 100%; display: flex; align-items: center; justify-content: space-between; padding: 0.6rem 0.75rem; border: none; background: transparent; border-radius: 8px; cursor: pointer; font-size: 0.84rem; color: var(--color-text, #0f172a); font-weight: 600; text-align: left; transition: background 0.15s;">
+                <span style="display: flex; align-items: center; gap: 9px;">
+                  <i class="fa-solid fa-up-right-and-down-left-from-center" style="width: 18px; color: #059669; font-size: 0.95rem;"></i>
+                  <span id="reader-menu-width-text">${savedWidthMode === 'wide' ? 'Khung Chuẩn (1080px)' : 'Mở Rộng Tối Đa (Ultra-Wide)'}</span>
+                </span>
+              </button>
+
+              <!-- 4. Fullscreen Mode -->
+              <button class="reader-menu-item" onclick="toggleBrowserFullscreen(); closeReaderSettingsMenu();" style="width: 100%; display: flex; align-items: center; justify-content: space-between; padding: 0.6rem 0.75rem; border: none; background: transparent; border-radius: 8px; cursor: pointer; font-size: 0.84rem; color: var(--color-text, #0f172a); font-weight: 600; text-align: left; transition: background 0.15s;">
+                <span style="display: flex; align-items: center; gap: 9px;">
+                  <i class="fa-solid fa-expand" style="width: 18px; color: #d97706; font-size: 0.95rem;"></i>
+                  <span>Toàn màn hình (F11 / Zen)</span>
+                </span>
+              </button>
+
+              <div style="height: 1px; background: var(--color-border, #e2e8f0); margin: 0.35rem 0;"></div>
+
+              <!-- 5. Create SOAP in DocSpace -->
+              <button class="reader-menu-item" id="btn-create-soap-from-guideline" onclick="createSoapFromCurrentGuideline(); closeReaderSettingsMenu();" style="width: 100%; display: flex; align-items: center; justify-content: space-between; padding: 0.6rem 0.75rem; border: none; background: transparent; border-radius: 8px; cursor: pointer; font-size: 0.84rem; color: #0284c7; font-weight: 700; text-align: left; transition: background 0.15s;">
+                <span style="display: flex; align-items: center; gap: 9px;">
+                  <i class="fa-solid fa-notes-medical" style="width: 18px; color: #0284c7; font-size: 0.95rem;"></i>
+                  <span>Tạo Bệnh án SOAP từ bài này</span>
+                </span>
+                <span class="rx-tag" style="font-size: 0.7rem; padding: 2px 7px; border-radius: 6px; font-weight: 700; background: rgba(2,132,199,0.1); color: #0284c7;">DocSpace</span>
+              </button>
+
+              <!-- 6. View Pathophysiology Mechanism -->
+              <button class="reader-menu-item" id="btn-view-guideline-pathophysiology" onclick="openPathophysiologyForCurrentGuideline(); closeReaderSettingsMenu();" style="width: 100%; display: flex; align-items: center; justify-content: space-between; padding: 0.6rem 0.75rem; border: none; background: transparent; border-radius: 8px; cursor: pointer; font-size: 0.84rem; color: #7c3aed; font-weight: 700; text-align: left; transition: background 0.15s;">
+                <span style="display: flex; align-items: center; gap: 9px;">
+                  <i class="fa-solid fa-microscope" style="width: 18px; color: #7c3aed; font-size: 0.95rem;"></i>
+                  <span>Xem Cơ Chế Bệnh Sinh &amp; Sinh Lý Bệnh</span>
+                </span>
+                <span class="rx-tag" style="font-size: 0.7rem; padding: 2px 7px; border-radius: 6px; font-weight: 700; background: rgba(139,92,246,0.1); color: #7c3aed;">Cơ Sở</span>
+              </button>
+
+              <!-- 7. Copy EBM Note -->
+              <button class="reader-menu-item" id="btn-copy-ebm-note" onclick="copyGuidelineSoapNote();" style="width: 100%; display: flex; align-items: center; justify-content: space-between; padding: 0.6rem 0.75rem; border: none; background: transparent; border-radius: 8px; cursor: pointer; font-size: 0.84rem; color: var(--color-text, #0f172a); font-weight: 600; text-align: left; transition: background 0.15s;">
+                <span style="display: flex; align-items: center; gap: 9px;">
+                  <i class="fa-solid fa-clipboard-list" style="width: 18px; color: var(--color-primary, #0284c7); font-size: 0.95rem;"></i>
+                  <span>Sao chép EBM Note (EMR)</span>
+                </span>
+              </button>
+
+              <!-- 8. Print / PDF -->
+              <button class="reader-menu-item" onclick="window.print(); closeReaderSettingsMenu();" style="width: 100%; display: flex; align-items: center; justify-content: space-between; padding: 0.6rem 0.75rem; border: none; background: transparent; border-radius: 8px; cursor: pointer; font-size: 0.84rem; color: var(--color-text, #0f172a); font-weight: 600; text-align: left; transition: background 0.15s;">
+                <span style="display: flex; align-items: center; gap: 9px;">
+                  <i class="fa-solid fa-print" style="width: 18px; color: #64748b; font-size: 0.95rem;"></i>
+                  <span>In / Lưu PDF tài liệu</span>
+                </span>
+              </button>
+            </div>
+          </div>
+
+        </div>
+      </header>
+
+      <!-- MAIN ARTICLE MOUNT CONTAINER -->
+      <main id="guideline-article-mount" style="min-height: 550px; font-size: ${savedFontSize}px;">
+        <div style="text-align: center; padding: 6rem 1rem; color: var(--color-text-muted, #64748b);">
+          <i class="fa-solid fa-circle-notch fa-spin" style="font-size: 2.8rem; color: var(--color-primary, #0284c7); margin-bottom: 1.25rem;"></i>
+          <h3 style="font-size: 1.25rem; font-weight: 800; color: var(--color-text, #0f172a); margin-bottom: 0.5rem;">Đang Nạp & Mở Rộng Hướng Dẫn Lâm Sàng...</h3>
+          <p style="font-size: 0.88rem; max-width: 520px; margin: 0 auto;">Đang tối ưu hóa giao diện toàn màn hình, khuyến cáo và công cụ tính toán tương tác.</p>
+        </div>
+      </main>
+
+      <!-- Floating Reader Control Pill on Mobile -->
+      <div class="mobile-reader-floating-bar">
+        <button class="mob-read-btn" onclick="adjustReaderFontSize(-1); event.stopPropagation();" title="Giảm cỡ chữ (A-)">A-</button>
+        <span id="mob-read-font-display" style="font-weight: 700; font-size: 0.78rem; min-width: 32px; text-align: center; color: var(--color-primary, #0284c7);">${savedFontSize}px</span>
+        <button class="mob-read-btn" onclick="adjustReaderFontSize(1); event.stopPropagation();" title="Tăng cỡ chữ (A+)">A+</button>
+        <div style="width: 1px; height: 18px; background: var(--color-border, #cbd5e1); margin: 0 4px;"></div>
+        <button class="mob-read-btn" onclick="toggleReaderTheme(event)" title="Chế độ Tối/Sáng">
+          <i class="fa-solid fa-moon"></i>
+        </button>
+        <button class="mob-read-btn" onclick="copyGuidelineSoapNote()" title="Sao chép EBM Note">
+          <i class="fa-solid fa-clipboard-list"></i>
+        </button>
+      </div>
+
+    </div>
+  `;
+}
+
+/**
+ * Fetch, parse, and inject guideline content with Ultra-Wide CSS rules
+ */
+async function fetchAndHydrateGuideline(cleanSlug: string, baseSlugName: string): Promise<void> {
+  const mountEl = document.getElementById('guideline-article-mount');
+  if (!mountEl) return;
+
+  const candidatePaths = [
+    `/src/content/ebm/guidelines/kho-guidelines/${baseSlugName}.html`,
+    `src/content/ebm/guidelines/kho-guidelines/${baseSlugName}.html`,
+    `./src/content/ebm/guidelines/kho-guidelines/${baseSlugName}.html`,
+    `../src/content/ebm/guidelines/kho-guidelines/${baseSlugName}.html`,
+    `/dist/src/content/ebm/guidelines/kho-guidelines/${baseSlugName}.html`,
+    `dist/src/content/ebm/guidelines/kho-guidelines/${baseSlugName}.html`,
+    `kho-guidelines/${baseSlugName}.html`,
+    `/kho-guidelines/${baseSlugName}.html`,
+    `/src/content/ebm/guidelines/kho-guidelines/${baseSlugName}.mdx`,
+    `src/content/ebm/guidelines/kho-guidelines/${baseSlugName}.mdx`,
+    `./src/content/ebm/guidelines/kho-guidelines/${baseSlugName}.mdx`,
+    `../src/content/ebm/guidelines/kho-guidelines/${baseSlugName}.mdx`,
+    `kho-guidelines/${baseSlugName}.mdx`,
+    `/kho-guidelines/${baseSlugName}.mdx`
+  ];
+
+  let htmlText = '';
+  let isMdx = false;
+
+  for (const path of candidatePaths) {
+    try {
+      const isMdxPath = path.includes('.mdx') || path.includes('.md');
+      const fetchUrl = isMdxPath && !path.includes('?raw') ? `${path}?raw` : path;
+      let resp = await fetch(fetchUrl);
+      if (!resp.ok && fetchUrl !== path) {
+        resp = await fetch(path);
+      }
+      if (resp.ok) {
+        htmlText = await resp.text();
+        if (isMdxPath) {
+          isMdx = true;
+        }
+        break;
+      }
+    } catch {
+      // Continue searching
+    }
+  }
+
+  if (!htmlText) {
+    mountEl.innerHTML = `
+      <div style="max-width: 680px; margin: 4rem auto; text-align: center; padding: 3rem 2rem; background: var(--color-surface, #fff); border-radius: 16px; border: 1px solid #fca5a5; box-shadow: 0 4px 24px rgba(0,0,0,0.06);">
+        <i class="fa-solid fa-triangle-exclamation" style="font-size: 3.2rem; color: #dc2626; margin-bottom: 1.25rem;"></i>
+        <h3 style="font-size: 1.3rem; font-weight: 800; color: #991b1b; margin-bottom: 0.75rem;">Không tìm thấy bản tóm tắt Guideline</h3>
+        <p style="color: #64748b; font-size: 0.92rem; line-height: 1.6; margin-bottom: 1.5rem;">
+          Không thể tải tệp <code>${baseSlugName}.mdx</code>. Vui lòng kiểm tra lại đường dẫn hoặc quay lại danh sách Kho Guidelines.
+        </p>
+        <a href="#/ebm/kho-guidelines" class="btn btn-primary" style="display: inline-flex; align-items: center; gap: 8px; padding: 0.65rem 1.35rem; background: var(--color-primary, #0284c7); color: #fff; border-radius: 8px; text-decoration: none; font-weight: 800;">
+          <i class="fa-solid fa-arrow-left"></i> Quay lại Kho Guidelines
+        </a>
+      </div>
+    `;
+    return;
+  }
+
+  // Handle Native MDX Rendering for Guidelines
+  if (isMdx) {
+    const parsed = cliniMdxEngine.parse(htmlText);
+    const cleanTitle = parsed.title;
+    const crumbEl = document.getElementById('reader-breadcrumb-title');
+    if (crumbEl) crumbEl.textContent = cleanTitle;
+    document.title = `${cleanTitle} – CliniPortal`;
+
+    const frontmatter = parsed.frontmatter || {};
+    const org = frontmatter.organization || 'EBM Taskforce';
+    const year = frontmatter.year || '2026';
+    const cor = frontmatter.cor || '';
+    const loe = frontmatter.loe || '';
+
+    // Ensure guidelines-article.css and clinical-flow-engine.css are loaded in DOM
+    if (!document.querySelector('link[href*="guidelines-article.css"]')) {
+      const link = document.createElement('link');
+      link.rel = 'stylesheet';
+      link.href = './src/styles/components/guidelines-article.css';
+      document.head.appendChild(link);
+    }
+    if (!document.querySelector('link[href*="clinical-flow-engine.css"]')) {
+      const flowLink = document.createElement('link');
+      flowLink.rel = 'stylesheet';
+      flowLink.href = './src/styles/components/clinical-flow-engine.css';
+      document.head.appendChild(flowLink);
+    }
+
+    // Pre-normalize relative image sources inside MDX rendered HTML
+    let renderedHtml = parsed.html;
+    renderedHtml = renderedHtml.replace(/(<img\s+[^>]*?src=["'])(\.\/|\.\.\/)*images\/([^"']+)["']/gi, '$1./src/content/ebm/guidelines/kho-guidelines/images/$3"');
+
+    // Build Sticky Quick Navigation Tab Bar from Frontmatter sections
+    const rawSections = Array.isArray(frontmatter.sections) && frontmatter.sections.length > 0
+      ? frontmatter.sections
+      : [];
+
+    let stickyTocHtml = '';
+    if (rawSections.length > 0) {
+      stickyTocHtml = `
+        <nav class="guideline-sticky-toc" id="guideline-sticky-toc" aria-label="Mục lục điều hướng nhanh">
+          <div class="guideline-sticky-toc-inner" id="guideline-sticky-toc-inner">
+            ${rawSections.map((s: any, idx: number) => `
+              <a href="#${s.id}" class="toc-tab ${idx === 0 ? 'active' : ''}" data-target="${s.id}">
+                ${s.number ? `${s.number}. ` : ''}${s.title}
+              </a>
+            `).join('')}
+          </div>
+        </nav>
+      `;
+    }
+    mountEl.innerHTML = `
+      <div class="reading-progress-container" style="position: fixed; top: 0; left: 0; width: 100%; height: 3.5px; max-height: 3.5px; z-index: 10001; pointer-events: none; overflow: hidden; background: transparent;">
+        <div class="reading-progress-bar" id="reading-progress-bar" style="position: absolute; top: 0; left: 0; height: 3.5px; max-height: 3.5px; min-height: 0; width: 0%; pointer-events: none;"></div>
+      </div>
+      <div class="guideline-article-container" style="max-width: 1280px; margin: 0 auto;">
+        
+        <!-- LUXURY EBM HERO BANNER -->
+        <div class="guideline-hero-banner" style="margin-bottom: 1.5rem; background: linear-gradient(135deg, #0b2545 0%, #0f172a 50%, #134e4a 100%); color: #ffffff; border-radius: 20px; border: 1px solid rgba(255, 255, 255, 0.15); box-shadow: 0 14px 36px -6px rgba(0, 0, 0, 0.25), 0 0 20px rgba(2, 132, 199, 0.15); position: relative; overflow: hidden;">
+          <div style="position: absolute; top: -60px; right: -60px; width: 220px; height: 220px; background: radial-gradient(circle, rgba(56, 189, 248, 0.2) 0%, transparent 70%); border-radius: 50%; pointer-events: none;"></div>
+          <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0.75rem; margin-bottom: 1rem; position: relative; z-index: 2;">
+            <span class="badge" style="background: rgba(251, 191, 36, 0.2); color: #fde047; border: 1.5px solid rgba(251, 191, 36, 0.45); font-weight: 800; font-size: 0.82rem; padding: 0.4rem 0.95rem; border-radius: 999px; text-transform: uppercase; letter-spacing: 0.05em; display: inline-flex; align-items: center; gap: 6px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+              <i class="fa-solid fa-scale-balanced" style="color: #facc15;"></i> GUIDELINE EBM • ${org} (${year})
+            </span>
+            <div style="display: flex; gap: 0.5rem; align-items: center;">
+              ${cor ? `<span style="font-size: 0.78rem; background: rgba(16,185,129,0.25); border: 1.5px solid rgba(16,185,129,0.5); color: #4ade80; padding: 0.3rem 0.7rem; border-radius: 8px; font-weight: 800; display: inline-flex; align-items: center; gap: 5px; box-shadow: 0 2px 8px rgba(16,185,129,0.2);"><i class="fa-solid fa-circle-check"></i> COR ${cor}</span>` : ''}
+              ${loe ? `<span style="font-size: 0.78rem; background: rgba(56,189,248,0.25); border: 1.5px solid rgba(56,189,248,0.5); color: #38bdf8; padding: 0.3rem 0.7rem; border-radius: 8px; font-weight: 800; display: inline-flex; align-items: center; gap: 5px; box-shadow: 0 2px 8px rgba(56,189,248,0.2);"><i class="fa-solid fa-layer-group"></i> LOE ${loe}</span>` : ''}
+            </div>
+          </div>
+          
+          <h1 style="font-family: var(--font-display, 'Plus Jakarta Sans', sans-serif); font-size: clamp(1.8rem, 3.5vw, 2.35rem); font-weight: 800; color: #ffffff; margin: 0.5rem 0 0.85rem 0; line-height: 1.25; letter-spacing: -0.02em; position: relative; z-index: 2; text-shadow: 0 2px 10px rgba(0,0,0,0.3);">
+            ${parsed.title}
+          </h1>
+          
+          <p style="margin: 0; font-size: 1.02rem; color: rgba(255, 255, 255, 0.9); line-height: 1.7; max-width: 980px; position: relative; z-index: 2; font-weight: 400;">
+            ${parsed.description || ''}
+          </p>
+        </div>
+
+        <!-- STICKY HORIZONTAL QUICK NAVIGATION (MỤC LỤC ĐÓNG BĂNG KHI CUỘN) -->
+        ${stickyTocHtml}
+
+        <!-- RENDERED CONTENT -->
+        <div class="mdx-rendered-article">
+          ${renderedHtml}
+        </div>
+      </div>
+    `;
+
+    // Normalize Images & Fallback Cascade
+    normalizeArticleImages(mountEl);
+
+    // Hydrate MDX Interactive CDSS Calculators & Smooth Anchors & ScrollSpy
+    hydrateMdxInteractiveTools(mountEl);
+    return;
+  }
+
+  // Parse HTML (Legacy Support)
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(htmlText, 'text/html');
+
+  // Extract Page Title
+  const docTitle = doc.querySelector('title')?.textContent || doc.querySelector('.hero-title')?.textContent || baseSlugName;
+  const cleanTitle = docTitle.replace(/– CliniPortal.*$/i, '').trim();
+  const crumbEl = document.getElementById('reader-breadcrumb-title');
+  if (crumbEl) crumbEl.textContent = cleanTitle;
+  document.title = `${cleanTitle} – CliniPortal`;
+
+  // Extract Styles
+  const styles = doc.querySelectorAll('style');
+  let inlineStyles = '';
+  styles.forEach(s => {
+    inlineStyles += s.textContent || '';
+  });
+
+  // Remove legacy placeholders, duplicate headers, and external stylesheet links
+  doc.querySelectorAll('#header-placeholder, #footer-placeholder, .topnav, link[rel="stylesheet"]').forEach(el => el.remove());
+
+  // Wrap all table elements with responsive scrolling wrappers to prevent mobile overflow
+  doc.querySelectorAll('table').forEach(tbl => {
+    const parent = tbl.parentElement;
+    if (!parent?.classList.contains('table-responsive') && !parent?.classList.contains('table-container') && !parent?.classList.contains('hemo-table-wrap')) {
+      const wrap = doc.createElement('div');
+      wrap.className = 'table-responsive';
+      tbl.parentNode?.insertBefore(wrap, tbl);
+      wrap.appendChild(tbl);
+    }
+  });
+
+  // Extract clean article body content
+  const articleHtml = doc.body ? doc.body.innerHTML : htmlText;
+
+  // Build Injected HTML with Expanded Full-Width Layout Rules
+  mountEl.innerHTML = `
+    <style id="guideline-expanded-reader-styles">
+      ${inlineStyles}
+
+      /* ═══════════════════════════════════════════════════════════
+         FULL-WIDTH ULTRA-CLEAR READER STYLES OVERRIDES
+         ═══════════════════════════════════════════════════════════ */
+      .guideline-reader-wrapper .topnav { display: none !important; }
+      
+      /* Wide Mode: Expand Containers to 1540px / 96% */
+      .guideline-reader-wrapper.reader-mode-wide .hero-inner,
+      .guideline-reader-wrapper.reader-mode-wide .pillars-inner,
+      .guideline-reader-wrapper.reader-mode-wide .quicknav,
+      .guideline-reader-wrapper.reader-mode-wide .pillars-nav-inner,
+      .guideline-reader-wrapper.reader-mode-wide .page-content,
+      .guideline-reader-wrapper.reader-mode-wide .main-container {
+        max-width: min(1560px, 96%) !important;
+        margin-left: auto !important;
+        margin-right: auto !important;
+      }
+
+      /* Standard Mode: Centered 1100px */
+      .guideline-reader-wrapper.reader-mode-standard .hero-inner,
+      .guideline-reader-wrapper.reader-mode-standard .pillars-inner,
+      .guideline-reader-wrapper.reader-mode-standard .page-content {
+        max-width: 1080px !important;
+        margin-left: auto !important;
+        margin-right: auto !important;
+      }
+
+      /* Responsive Tables */
+      .guideline-injected-article .table-responsive {
+        width: 100% !important;
+        overflow-x: auto !important;
+        -webkit-overflow-scrolling: touch !important;
+        margin: 1.25rem 0 !important;
+        border-radius: 10px !important;
+      }
+
+      /* Enhanced Visual Polish for Reading Clarity */
+      .guideline-injected-article .hero {
+        padding: 3.5rem 2rem 4.5rem;
+      }
+      .guideline-injected-article .hero-title {
+        font-size: clamp(2rem, 4.5vw, 3.2rem) !important;
+        line-height: 1.2 !important;
+      }
+      .guideline-injected-article .hero-subtitle {
+        font-size: 1.05rem !important;
+        max-width: 1100px !important;
+        line-height: 1.7 !important;
+      }
+      .guideline-injected-article .quicknav,
+      .guideline-injected-article .pillars-nav {
+        position: sticky !important;
+        top: 80px !important;
+        z-index: 150 !important;
+        background: var(--color-surface, #ffffff);
+        box-shadow: 0 2px 8px rgba(0,0,0,0.03);
+      }
+      .guideline-injected-article .sec-card {
+        margin-bottom: 2rem;
+        box-shadow: 0 4px 16px rgba(0,0,0,0.04);
+        border: 1px solid var(--color-border, #cbd5e1);
+      }
+      .guideline-injected-article .sec-hdr {
+        padding: 1.25rem 1.75rem;
+      }
+      .guideline-injected-article .sec-title {
+        font-size: 1.2rem !important;
+      }
+      .guideline-injected-article .sec-body {
+        padding: 1.75rem;
+        font-size: 0.95rem;
+        line-height: 1.75;
+      }
+      .guideline-injected-article .matrix-grid {
+        grid-template-columns: repeat(auto-fit, minmax(min(340px, 100%), 1fr)) !important;
+        gap: 1.25rem !important;
+      }
+      .guideline-injected-article .data-table th,
+      .guideline-injected-article .data-table td {
+        padding: 0.95rem 1.15rem !important;
+        font-size: 0.92rem !important;
+      }
+      .guideline-injected-article .infobox {
+        padding: 1.2rem 1.5rem !important;
+        font-size: 0.92rem !important;
+      }
+      .guideline-injected-article .calc-container {
+        padding: 1.75rem !important;
+      }
+      .guideline-injected-article .sys-card-header {
+        padding: 1.15rem 1.5rem !important;
+      }
+
+      /* Mobile Overrides (<= 768px) */
+      @media (max-width: 768px) {
+        .guideline-reader-wrapper {
+          padding-top: 64px !important;
+          padding-bottom: 2.5rem !important;
+        }
+
+        .guideline-reader-toolbar {
+          padding: 0.6rem 0.85rem !important;
+          border-radius: 10px !important;
+          margin-bottom: 1rem !important;
+        }
+
+        .reader-settings-menu {
+          max-width: calc(100vw - 24px) !important;
+          min-width: 0 !important;
+          right: 0 !important;
+        }
+
+        .guideline-injected-article .quicknav,
+        .guideline-injected-article .pillars-nav {
+          top: 56px !important;
+          padding: 0.45rem 0.65rem !important;
+          border-radius: 10px !important;
+        }
+
+        .guideline-injected-article .hero {
+          padding: 2.5rem 1.25rem 3rem !important;
+          border-radius: 16px !important;
+        }
+
+        .guideline-injected-article .sec-hdr {
+          padding: 1rem 1.25rem !important;
+        }
+
+        .guideline-injected-article .sec-body {
+          padding: 1.25rem 1rem !important;
+          font-size: 0.9rem !important;
+        }
+
+        .guideline-injected-article .matrix-grid,
+        .guideline-injected-article .grid-2,
+        .guideline-injected-article .grid-3,
+        .guideline-injected-article .grid-2col,
+        .guideline-injected-article .grid-3col,
+        .guideline-injected-article .updates-grid,
+        .guideline-injected-article .card-grid,
+        .guideline-injected-article .figo-grid,
+        .guideline-injected-article .flow-branches,
+        .guideline-injected-article .doppler-grid {
+          grid-template-columns: 1fr !important;
+          gap: 0.85rem !important;
+        }
+
+        .guideline-injected-article .data-table th,
+        .guideline-injected-article .data-table td {
+          padding: 0.6rem 0.75rem !important;
+          font-size: 0.825rem !important;
+        }
+      }
+
+      /* Dark Mode High Contrast Enhancements */
+      [data-theme="dark"] .guideline-reader-toolbar {
+        background: rgba(15, 23, 42, 0.96) !important;
+        border-color: #334155 !important;
+      }
+      [data-theme="dark"] .guideline-injected-article .sec-card {
+        background: #1e293b !important;
+        border-color: #334155 !important;
+      }
+    </style>
+
+    <div class="guideline-injected-article" id="guideline-injected-article">
+      ${articleHtml}
+    </div>
+  `;
+
+  // Hydrate Scripts (Interactive tools: PTS, Pain, Systems, Accordions, Search)
+  hydrateGuidelineScripts(doc, mountEl);
+}
+
+function hydrateGuidelineScripts(doc: Document, mountEl: HTMLElement): void {
+  // 1. Direct Accordion Support for Guideline System Cards & Sections
+  mountEl.querySelectorAll('.sys-card-header, .accordion-header').forEach(header => {
+    header.addEventListener('click', () => {
+      const card = header.closest('.sys-card, .accordion-item');
+      if (card) {
+        card.classList.toggle('open');
+      }
+    });
+  });
+
+  // 2. Direct Filter Tabs Support
+  const filterBtns = mountEl.querySelectorAll('.sys-filter-btn');
+  const sysCards = mountEl.querySelectorAll('.sys-card');
+  if (filterBtns.length > 0 && sysCards.length > 0) {
+    filterBtns.forEach(btn => {
+      btn.addEventListener('click', () => {
+        filterBtns.forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        const filter = btn.getAttribute('data-filter');
+
+        sysCards.forEach(card => {
+          if (filter === 'all' || card.getAttribute('data-category') === filter) {
+            (card as HTMLElement).style.display = 'block';
+          } else {
+            (card as HTMLElement).style.display = 'none';
+          }
+        });
+      });
+    });
+  }
+
+  // 3. Direct Search Bar Support
+  const searchInput = mountEl.querySelector('#sysSearchInput') as HTMLInputElement | null;
+  if (searchInput && sysCards.length > 0) {
+    searchInput.addEventListener('input', (e) => {
+      const q = (e.target as HTMLInputElement).value.toLowerCase().trim();
+      sysCards.forEach(card => {
+        const text = card.textContent?.toLowerCase() || '';
+        if (!q || text.includes(q)) {
+          (card as HTMLElement).style.display = 'block';
+          if (q) card.classList.add('open');
+        } else {
+          (card as HTMLElement).style.display = 'none';
+        }
+      });
+    });
+  }
+
+  // 4. Safely Execute Embedded Script Logic
+  const scripts = doc.querySelectorAll('script');
+  scripts.forEach(script => {
+    const code = script.textContent || '';
+    if (!script.src && code.trim()) {
+      try {
+        const runScript = new Function(code);
+        runScript();
+      } catch (err) {
+        console.debug('Guideline script hydration note:', err);
+      }
+    }
+  });
+
+  // 5. Ensure In-Page Anchors & QuickNav Smooth Scrolling without breaking SPA Router
+  mountEl.querySelectorAll<HTMLAnchorElement>('a[href^="#"]').forEach(link => {
+    link.addEventListener('click', (e) => {
+      const href = link.getAttribute('href');
+      if (href && href.startsWith('#') && href.length > 1 && !href.startsWith('#/')) {
+        e.preventDefault();
+        e.stopPropagation();
+        const targetId = href.replace(/^#/, '');
+        const targetEl = document.getElementById(targetId) || mountEl.querySelector(href);
+        if (targetEl) {
+          mountEl.querySelectorAll('.quicknav-link, .quickmenu-item, .pillar-tab, .toc-item').forEach(l => l.classList.remove('active'));
+          link.classList.add('active');
+          targetEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+      }
+    });
+  });
+
+  // 6. Normalize Images & Attach Multi-Tier Fallback Cascade
+  normalizeArticleImages(mountEl);
+}
+
+/**
+ * Toggle Reader Width Mode between Ultra-Wide (1560px/96%) and Standard (1080px)
+ */
+export function toggleReaderWidthMode(): void {
+  const wrapper = document.getElementById('guideline-reader-wrapper');
+  const textEl = document.getElementById('wide-mode-text');
+  if (!wrapper) return;
+
+  const isCurrentlyWide = wrapper.classList.contains('reader-mode-wide');
+  if (isCurrentlyWide) {
+    wrapper.classList.remove('reader-mode-wide');
+    wrapper.classList.add('reader-mode-standard');
+    if (textEl) textEl.textContent = 'Mở Rộng Tối Đa';
+    localStorage.setItem('cp_reader_width', 'standard');
+  } else {
+    wrapper.classList.remove('reader-mode-standard');
+    wrapper.classList.add('reader-mode-wide');
+    if (textEl) textEl.textContent = 'Khung Chuẩn';
+    localStorage.setItem('cp_reader_width', 'wide');
+  }
+}
+
+/**
+ * Adjust font size for clear reading
+ */
+export function adjustReaderFontSize(delta: number): void {
+  const mountEl = document.getElementById('guideline-article-mount');
+  const displayEl = document.getElementById('reader-font-size-display');
+  if (!mountEl) return;
+
+  const currentSize = parseInt(mountEl.style.fontSize || '16', 10);
+  const newSize = Math.max(13, Math.min(22, currentSize + delta));
+  
+  mountEl.style.fontSize = `${newSize}px`;
+  if (displayEl) displayEl.textContent = `${newSize}px`;
+  const mobDisplayEl = document.getElementById('mob-read-font-display');
+  if (mobDisplayEl) mobDisplayEl.textContent = `${newSize}px`;
+  localStorage.setItem('cp_reader_font_size', String(newSize));
+}
+
+/**
+ * Toggle native browser Fullscreen (Zen Reading Mode)
+ */
+export function toggleBrowserFullscreen(): void {
+  const elem = document.documentElement;
+  if (!document.fullscreenElement) {
+    if (elem.requestFullscreen) {
+      elem.requestFullscreen();
+    }
+  } else {
+    if (document.exitFullscreen) {
+      document.exitFullscreen();
+    }
+  }
+}
+
+/**
+ * Copy a standardized EBM clinical note into user's clipboard
+ */
+export function copyGuidelineSoapNote(): void {
+  const title = document.getElementById('reader-breadcrumb-title')?.textContent || 'Guideline Khuyến Cáo';
+  const url = window.location.href;
+  
+  const recElements = document.querySelectorAll('.sec-card .criteria-item, .ebm-rec-card, .infobox');
+  let points: string[] = [];
+  recElements.forEach((el, idx) => {
+    if (idx < 8) {
+      const text = el.textContent?.replace(/\s+/g, ' ').trim();
+      if (text) points.push(`- ${text}`);
+    }
+  });
+
+  const note = `[EBM CLINICAL NOTE — CLINIPORTAL]
+📌 TÀI LIỆU: ${title}
+🔗 NGUỒN: ${url}
+⏱️ TRÍCH XUẤT: ${new Date().toLocaleDateString('vi-VN')}
+
+📋 CÁC TIÊU CHUẨN & KHUYẾN CÁO THEN CHỐT:
+${points.join('\n')}
+
+⚠️ LƯU Ý: Khuyến cáo hỗ trợ ra quyết định lâm sàng (CDSS), bác sĩ cá thể hóa trên từng ca bệnh.`;
+
+  navigator.clipboard.writeText(note).then(() => {
+    const btn = document.getElementById('btn-copy-ebm-note');
+    if (btn) {
+      const origHtml = btn.innerHTML;
+      btn.innerHTML = '<i class="fa-solid fa-check" style="color:#16a34a;"></i> <span>Đã sao chép!</span>';
+      setTimeout(() => {
+        btn.innerHTML = origHtml;
+      }, 2500);
+    }
+  }).catch(() => {
+    alert('Đã tạo bản ghi EBM Note!');
+  });
+}
+
+/**
+ * Toggle Reader Settings Dropdown Menu
+ */
+export function toggleReaderSettingsMenu(event?: Event): void {
+  if (event) event.stopPropagation();
+  const menu = document.getElementById('reader-settings-menu');
+  const btn = document.getElementById('reader-settings-toggle-btn');
+  if (!menu) return;
+
+  const isVisible = menu.style.display === 'block';
+  if (isVisible) {
+    closeReaderSettingsMenu();
+  } else {
+    syncReaderThemeUI();
+    menu.style.display = 'block';
+    if (btn) btn.setAttribute('aria-expanded', 'true');
+  }
+}
+
+/**
+ * Close Reader Settings Dropdown Menu
+ */
+export function closeReaderSettingsMenu(): void {
+  const menu = document.getElementById('reader-settings-menu');
+  const btn = document.getElementById('reader-settings-toggle-btn');
+  if (menu) menu.style.display = 'none';
+  if (btn) btn.setAttribute('aria-expanded', 'false');
+}
+
+/**
+ * Toggle Theme directly from Reader Settings Dropdown
+ */
+export function toggleReaderTheme(event?: Event): void {
+  if (event) event.stopPropagation();
+  CliniPortalThemeManager.toggleTheme();
+  syncReaderThemeUI();
+}
+
+/**
+ * Synchronize Reader Theme text and icon with current data-theme state
+ */
+export function syncReaderThemeUI(): void {
+  const currentTheme = document.documentElement.getAttribute('data-theme') || 'light';
+  const icon = document.getElementById('reader-menu-theme-icon');
+  const text = document.getElementById('reader-menu-theme-text');
+  const tag = document.getElementById('reader-menu-theme-tag');
+
+  if (currentTheme === 'dark') {
+    if (icon) {
+      icon.className = 'fa-solid fa-sun';
+      icon.style.color = '#f59e0b';
+    }
+    if (text) text.textContent = 'Chế độ Sáng (Light)';
+    if (tag) {
+      tag.textContent = 'Dark On';
+      tag.style.background = 'rgba(245, 158, 11, 0.15)';
+      tag.style.color = '#f59e0b';
+    }
+  } else {
+    if (icon) {
+      icon.className = 'fa-solid fa-moon';
+      icon.style.color = '#8b5cf6';
+    }
+    if (text) text.textContent = 'Chế độ Tối (Dark)';
+    if (tag) {
+      tag.textContent = 'Light On';
+      tag.style.background = 'rgba(139, 92, 246, 0.12)';
+      tag.style.color = '#8b5cf6';
+    }
+  }
+}
+
+/**
+ * Chuyển tiếp nhanh sang DocSpace SOAP và tự động khởi tạo ca bệnh với Guideline hiện tại
+ */
+export function createSoapFromCurrentGuideline(): void {
+  const breadcrumbTitle = document.getElementById('reader-breadcrumb-title')?.textContent || '';
+  const hash = window.location.hash || '';
+  const match = hash.match(/kho-guidelines\/([^\/?#]+)/i) || hash.match(/reader\/([^\/?#]+)/i);
+  const slug = match ? match[1] : breadcrumbTitle;
+  const articleTitle = document.querySelector('.guideline-article-title, .reader-content h1, h1')?.textContent?.trim() || breadcrumbTitle || slug;
+
+  // Đóng gói Clinical Intent gửi sang DocSpace qua sessionStorage
+  sendClinicalIntent({
+    action: 'create-soap-from-guideline',
+    payload: {
+      slug,
+      title: articleTitle,
+      sourceUrl: window.location.href,
+    },
+    source: 'ebm',
+  });
+  
+  // Điều hướng chính xác sang DocSpace Clinical Case Analysis kèm tham số URL fallback
+  let targetUrl = './src/content/docspace/index.html';
+  if (typeof window !== 'undefined' && window.location.pathname.includes('/src/content/ebm/')) {
+    targetUrl = '../../docspace/index.html';
+  }
+  window.location.href = `${targetUrl}?from_guideline=${encodeURIComponent(slug)}`;
+}
+
+/**
+ * Mở giao diện Cơ Chế Bệnh Sinh & Sinh Lý Bệnh tương ứng trong phân hệ Pathophysiology
+ */
+export function openPathophysiologyForCurrentGuideline(): void {
+  window.location.hash = '#/pathophysiology/co-che-benh-sinh';
+}
+
+// Global click outside listener to close settings menu
+if (typeof document !== 'undefined') {
+  document.addEventListener('click', (e) => {
+    const wrapper = document.getElementById('reader-settings-dropdown-wrapper');
+    if (wrapper && !wrapper.contains(e.target as Node)) {
+      closeReaderSettingsMenu();
+    }
+  });
+}
+
+// Expose actions to window for direct event handler execution
+if (typeof window !== 'undefined') {
+  const win = window as any;
+  win.toggleReaderSettingsMenu = toggleReaderSettingsMenu;
+  win.closeReaderSettingsMenu = closeReaderSettingsMenu;
+  win.toggleReaderTheme = toggleReaderTheme;
+  win.syncReaderThemeUI = syncReaderThemeUI;
+  win.toggleReaderWidthMode = toggleReaderWidthMode;
+  win.adjustReaderFontSize = adjustReaderFontSize;
+  win.toggleBrowserFullscreen = toggleBrowserFullscreen;
+  win.copyGuidelineSoapNote = copyGuidelineSoapNote;
+  win.createSoapFromCurrentGuideline = createSoapFromCurrentGuideline;
+  win.openPathophysiologyForCurrentGuideline = openPathophysiologyForCurrentGuideline;
+}
+
+/**
+ * Chuẩn hóa đường dẫn hình ảnh và thiết lập cơ chế fallback đa tầng cho toàn bộ ảnh trong bài viết
+ */
+function normalizeArticleImages(mountEl: HTMLElement): void {
+  mountEl.querySelectorAll<HTMLImageElement>('img').forEach(img => {
+    const rawSrc = img.getAttribute('src') || '';
+    if (!rawSrc || rawSrc.startsWith('data:') || rawSrc.startsWith('http://') || rawSrc.startsWith('https://')) return;
+
+    const rawFileName = rawSrc.split('/').pop()?.split('?')[0] || '';
+    if (!rawFileName) return;
+
+    // Danh sách đường dẫn dự phòng đa tầng cho mọi môi trường
+    const candidatePaths = [
+      `./src/content/ebm/guidelines/kho-guidelines/images/${rawFileName}`,
+      `/src/content/ebm/guidelines/kho-guidelines/images/${rawFileName}`,
+      `src/content/ebm/guidelines/kho-guidelines/images/${rawFileName}`,
+      `../src/content/ebm/guidelines/kho-guidelines/images/${rawFileName}`,
+      `./assets/images/${rawFileName}`,
+      `/assets/images/${rawFileName}`,
+      `assets/images/${rawFileName}`,
+      `./images/${rawFileName}`,
+      `/images/${rawFileName}`,
+      `images/${rawFileName}`
+    ];
+
+    // Gán src ưu tiên số 1
+    if (!img.src || img.src.endsWith('/images/' + rawFileName) || img.getAttribute('src')?.startsWith('./images/')) {
+      img.src = candidatePaths[0];
+    }
+
+    // Gán event listener fallback đa tầng
+    let attempt = 0;
+    img.onerror = () => {
+      attempt++;
+      if (attempt < candidatePaths.length) {
+        img.src = candidatePaths[attempt];
+      }
+    };
+  });
+}
+
+/**
+ * Hydrate Interactive CDSS Calculators & Smooth Anchors for MDX Articles
+ */
+function hydrateMdxInteractiveTools(mountEl: HTMLElement): void {
+  // 0. Normalize Images in MDX Content
+  normalizeArticleImages(mountEl);
+
+  // 0.1. Hydrate Interactive Clinical Flowcharts (Pan, Zoom, Fullscreen, Copy, Export)
+  hydrateFlowchartViewers(mountEl);
+
+  // 1. Replace un-rendered HTML entities like &rarr; in text nodes
+  const walker = document.createTreeWalker(mountEl, NodeFilter.SHOW_TEXT);
+  let node: Node | null;
+  while ((node = walker.nextNode())) {
+    if (node.nodeValue && node.nodeValue.includes('&rarr;')) {
+      node.nodeValue = node.nodeValue.replace(/&rarr;/g, '→');
+    }
+  }
+
+  // 2. CDSS 1: BP Classification Calculator (Table 4 AHA/ACC 2025)
+  const inputSbp = mountEl.querySelector('#input-sbp') as HTMLInputElement | null;
+  const inputDbp = mountEl.querySelector('#input-dbp') as HTMLInputElement | null;
+  const resultEl = mountEl.querySelector('#bp-class-result') as HTMLElement | null;
+
+  if (inputSbp && inputDbp && resultEl) {
+    const calculateBpClass = () => {
+      const sbp = parseFloat(inputSbp.value) || 0;
+      const dbp = parseFloat(inputDbp.value) || 0;
+
+      if (sbp <= 0 || dbp <= 0) {
+        resultEl.innerHTML = '<span style="color: var(--color-text-muted);">Vui lòng nhập trị số SBP và DBP</span>';
+        return;
+      }
+
+      let category = '';
+      let badgeStyle = '';
+      let advice = '';
+
+      if (sbp >= 180 || dbp >= 120) {
+        category = 'Cơn Tăng Huyết Áp Nguy Kịch (Hypertensive Crisis)';
+        badgeStyle = 'background: #7f1d1d; color: #ffffff;';
+        advice = 'Cần đánh giá ngay tổn thương cơ quan đích cấp tính (HMOD). Nếu có: Cấp cứu THA (Emergency) nhập ICU hạ áp IV. Nếu không: Khẩn cấp THA (Urgency) hạ áp uống.';
+      } else if (sbp >= 140 || dbp >= 90) {
+        category = 'Tăng Huyết Áp Độ 2 (Stage 2)';
+        badgeStyle = 'background: #dc2626; color: #ffffff;';
+        advice = 'Chỉ định khởi trị ngay bằng Viên Phối Hợp Liều Cố Định (SPC) 2 nhóm thuốc (RAASi + CCB hoặc Thiazide) kết hợp thay đổi lối sống. Mục tiêu HA < 130/80 mm Hg.';
+      } else if ((sbp >= 130 && sbp <= 139) || (dbp >= 80 && dbp <= 89)) {
+        category = 'Tăng Huyết Áp Độ 1 (Stage 1)';
+        badgeStyle = 'background: #d97706; color: #ffffff;';
+        advice = 'Đánh giá nguy cơ tim mạch 10 năm bằng PREVENT™. Nếu PREVENT ≥ 7.5% hoặc có CVD/CKD/Đái tháo đường: Khởi trị thuốc hạ áp đơn trị/phối hợp. Nếu < 7.5%: Can thiệp lối sống tích cực 3-6 tháng.';
+      } else if (sbp >= 120 && sbp <= 129 && dbp < 80) {
+        category = 'Huyết Áp Tăng Nhẹ (Elevated BP)';
+        badgeStyle = 'background: #0284c7; color: #ffffff;';
+        advice = 'Can thiệp lối sống không dùng thuốc (Chế độ ăn DASH, giảm muối < 2300mg/ngày, tập thể dục 150 phút/tuần, giảm cân, hạn chế rượu bia). Tái khám đánh giá lại sau 3–6 tháng.';
+      } else {
+        category = 'Huyết Áp Bình Thường (Normal BP)';
+        badgeStyle = 'background: #059669; color: #ffffff;';
+        advice = 'Duy trì lối sống lành mạnh và kiểm tra huyết áp định kỳ hàng năm.';
+      }
+
+      resultEl.innerHTML = `
+        <div style="display: flex; flex-direction: column; gap: 0.4rem; width: 100%;">
+          <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0.5rem;">
+            <span style="font-size: 0.95rem; font-weight: 800; color: var(--color-text, #0f172a);">
+              📊 Kết Quả: <span class="badge" style="padding: 0.25rem 0.65rem; border-radius: 6px; font-weight: 800; ${badgeStyle}">${category}</span>
+            </span>
+            <span style="font-size: 0.78rem; color: var(--color-text-muted, #64748b); font-weight: 600;">HA: ${sbp}/${dbp} mm Hg</span>
+          </div>
+          <p style="margin: 0; font-size: 0.82rem; line-height: 1.5; color: var(--color-text-muted, #475569);">${advice}</p>
+        </div>
+      `;
+    };
+
+    inputSbp.addEventListener('input', calculateBpClass);
+    inputDbp.addEventListener('input', calculateBpClass);
+    calculateBpClass();
+  }
+
+  // 2.1. CDSS 2: Dengue Fluid Logistics & Resuscitation Schedule (BYT 2023)
+  hydrateDengueCDSS(mountEl);
+
+  // 2.2. Execute any embedded scripts safely
+  executeEmbeddedScripts(mountEl);
+
+  // 3. Dynamic Sticky TOC fallback for non-MDX or articles without frontmatter sections
+  let stickyNavEl = mountEl.querySelector('.guideline-sticky-toc');
+  const secCards = Array.from(mountEl.querySelectorAll<HTMLElement>('.sec-card[id]'));
+  
+  if (!stickyNavEl && secCards.length > 0) {
+    const nav = document.createElement('nav');
+    nav.className = 'guideline-sticky-toc';
+    nav.id = 'guideline-sticky-toc';
+    nav.setAttribute('aria-label', 'Mục lục điều hướng nhanh');
+    
+    const inner = document.createElement('div');
+    inner.className = 'guideline-sticky-toc-inner';
+    inner.id = 'guideline-sticky-toc-inner';
+    
+    secCards.forEach((sec, idx) => {
+      const id = sec.id;
+      const titleEl = sec.querySelector('.sec-title');
+      const rawTitle = titleEl ? titleEl.textContent?.trim() || id : id;
+      const cleanTitle = rawTitle.replace(/^Phần\s+\d+:\s*/i, '');
+      
+      const a = document.createElement('a');
+      a.href = `#${id}`;
+      a.className = `toc-tab ${idx === 0 ? 'active' : ''}`;
+      a.dataset.target = id;
+      a.textContent = `${idx + 1}. ${cleanTitle}`;
+      inner.appendChild(a);
+    });
+    
+    nav.appendChild(inner);
+    const contentContainer = mountEl.querySelector('.guideline-article-container') || mountEl.querySelector('.guideline-injected-article') || mountEl;
+    const heroBanner = contentContainer.querySelector('.guideline-hero-banner') || contentContainer.querySelector('.hero');
+    if (heroBanner && heroBanner.nextSibling) {
+      contentContainer.insertBefore(nav, heroBanner.nextSibling);
+    } else {
+      contentContainer.prepend(nav);
+    }
+    stickyNavEl = nav;
+  }
+
+  // 4. ScrollSpy & Interactive Tab Navigation for Sticky TOC Bar
+  const tocTabs = Array.from(mountEl.querySelectorAll<HTMLAnchorElement>('.toc-tab'));
+  if (tocTabs.length > 0 && secCards.length > 0) {
+    // Click handler with smooth scrolling and instant tab activation
+    tocTabs.forEach(tab => {
+      tab.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const targetId = tab.dataset.target || tab.getAttribute('href')?.replace(/^#/, '');
+        if (targetId) {
+          const targetEl = document.getElementById(targetId) || mountEl.querySelector(`#${targetId}`);
+          if (targetEl) {
+            const headerOffset = window.innerWidth <= 768 ? 105 : 135;
+            const elementTop = targetEl.getBoundingClientRect().top + window.pageYOffset;
+            window.scrollTo({
+              top: Math.max(0, elementTop - headerOffset),
+              behavior: 'smooth'
+            });
+
+            tocTabs.forEach(t => t.classList.remove('active'));
+            tab.classList.add('active');
+
+            const navInner = tab.closest('.guideline-sticky-toc-inner') as HTMLElement | null;
+            if (navInner) {
+              const tabLeft = tab.offsetLeft;
+              const tabWidth = tab.offsetWidth;
+              const innerWidth = navInner.clientWidth;
+              navInner.scrollTo({
+                left: tabLeft - (innerWidth / 2) + (tabWidth / 2),
+                behavior: 'smooth'
+              });
+            }
+          }
+        }
+      });
+    });
+
+    // Throttled ScrollSpy listener to automatically update active tab on page scroll
+    let isScrollTicking = false;
+    const updateActiveTocTab = () => {
+      const headerOffset = window.innerWidth <= 768 ? 115 : 145;
+      let activeSecId = '';
+
+      for (let i = secCards.length - 1; i >= 0; i--) {
+        const sec = secCards[i];
+        const rect = sec.getBoundingClientRect();
+        if (rect.top <= headerOffset + 50) {
+          activeSecId = sec.id;
+          break;
+        }
+      }
+
+      if (!activeSecId && secCards.length > 0) {
+        activeSecId = secCards[0].id;
+      }
+
+      if (activeSecId) {
+        tocTabs.forEach(tab => {
+          const target = tab.dataset.target || tab.getAttribute('href')?.replace(/^#/, '');
+          if (target === activeSecId) {
+            if (!tab.classList.contains('active')) {
+              tocTabs.forEach(t => t.classList.remove('active'));
+              tab.classList.add('active');
+
+              const navInner = tab.closest('.guideline-sticky-toc-inner') as HTMLElement | null;
+              if (navInner) {
+                const tabLeft = tab.offsetLeft;
+                const tabWidth = tab.offsetWidth;
+                const innerWidth = navInner.clientWidth;
+                navInner.scrollTo({
+                  left: tabLeft - (innerWidth / 2) + (tabWidth / 2),
+                  behavior: 'smooth'
+                });
+              }
+            }
+          }
+        });
+      }
+      isScrollTicking = false;
+    };
+
+    window.addEventListener('scroll', () => {
+      if (!isScrollTicking) {
+        requestAnimationFrame(updateActiveTocTab);
+        isScrollTicking = true;
+      }
+    }, { passive: true });
+
+    // Initial check
+    setTimeout(updateActiveTocTab, 150);
+  }
+
+  // 5. Smooth scroll in-page anchors
+  mountEl.querySelectorAll<HTMLAnchorElement>('a[href^="#"]:not(.toc-tab)').forEach(link => {
+    link.addEventListener('click', (e) => {
+      const href = link.getAttribute('href');
+      if (href && href.startsWith('#') && href.length > 1 && !href.startsWith('#/')) {
+        e.preventDefault();
+        e.stopPropagation();
+        const targetId = href.replace(/^#/, '');
+        const targetEl = document.getElementById(targetId) || mountEl.querySelector(href);
+        if (targetEl) {
+          targetEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+      }
+    });
+  });
+
+  // 6. Normalize Hub / Return Back Links
+  mountEl.querySelectorAll<HTMLAnchorElement>('a').forEach(link => {
+    const href = link.getAttribute('href') || '';
+    if (href.endsWith('guidelines.html') || href.endsWith('kho-guidelines/index.html') || href === 'index.html') {
+      link.setAttribute('href', '#/ebm/kho-guidelines');
+    }
+  });
+}
+
+/**
+ * Hydrate CDSS Bộ Công Cụ Tính Toán Dịch Truyền & Lập Bảng Cọc Dịch SXHD Chuẩn BYT 2023
+ */
+function hydrateDengueCDSS(mountEl: HTMLElement): void {
+  const btnCalc = mountEl.querySelector('#btn-calc-dengue') as HTMLButtonElement | null;
+  const btnCopy = mountEl.querySelector('#btn-copy-dengue-table') as HTMLButtonElement | null;
+  const selectGroup = mountEl.querySelector('#select-dengue-group') as HTMLSelectElement | null;
+  const selectStage = mountEl.querySelector('#select-dengue-stage') as HTMLSelectElement | null;
+  const inputTime = mountEl.querySelector('#input-dengue-time') as HTMLInputElement | null;
+  const inputWeight = mountEl.querySelector('#input-dengue-weight') as HTMLInputElement | null;
+  const inputAge = mountEl.querySelector('#input-dengue-age') as HTMLInputElement | null;
+  const selectGender = mountEl.querySelector('#select-dengue-gender') as HTMLSelectElement | null;
+  const selectBottle = mountEl.querySelector('#select-bottle-size') as HTMLSelectElement | null;
+  const resultBox = mountEl.querySelector('#dengue-result-box') as HTMLElement | null;
+
+  if (!btnCalc || !resultBox) return;
+
+  const btnPresetAdultShock = mountEl.querySelector('#btn-preset-adult-shock') as HTMLButtonElement | null;
+  const btnPresetChildShock = mountEl.querySelector('#btn-preset-child-shock') as HTMLButtonElement | null;
+  const btnPresetTeenWarning = mountEl.querySelector('#btn-preset-teen-warning') as HTMLButtonElement | null;
+  const btnPresetAdultSevere = mountEl.querySelector('#btn-preset-adult-severe') as HTMLButtonElement | null;
+
+  const CDC_WEIGHTS: Record<string, Record<number, number>> = {
+    male: { 2: 13, 3: 14, 4: 16, 5: 18, 6: 21, 7: 23, 8: 26, 9: 29, 10: 32, 11: 36, 12: 40, 13: 45, 14: 51, 15: 56, 16: 61 },
+    female: { 2: 12, 3: 14, 4: 16, 5: 18, 6: 20, 7: 23, 8: 26, 9: 29, 10: 33, 11: 37, 12: 42, 13: 46, 14: 49, 15: 52, 16: 54 }
+  };
+
+  interface Step {
+    rate: number;
+    duration: number;
+    label: string;
+    type: string;
+  }
+
+  const PROTOCOLS: Record<string, Record<string, Step[]>> = {
+    adult: {
+      shock: [
+        { rate: 15, duration: 1, label: 'Giờ đầu chống sốc (Điện giải)', type: 'electrolyte' },
+        { rate: 10, duration: 2, label: 'Giảm liều bậc 1 (Điện giải)', type: 'electrolyte' },
+        { rate: 6, duration: 2, label: 'Giảm liều bậc 2 (Điện giải)', type: 'electrolyte' },
+        { rate: 3, duration: 5, label: 'Giảm liều bậc 3 (Điện giải)', type: 'electrolyte' },
+        { rate: 1.5, duration: 12, label: 'Truyền duy trì trước khi ngưng dịch', type: 'electrolyte' }
+      ],
+      warning: [
+        { rate: 6, duration: 2, label: 'Bù dịch điện giải khởi đầu (1–2h)', type: 'electrolyte' },
+        { rate: 3, duration: 4, label: 'Giảm liều bậc 1 (2–4h)', type: 'electrolyte' },
+        { rate: 1.5, duration: 12, label: 'Truyền duy trì tối thiểu (6–18h)', type: 'electrolyte' }
+      ],
+      severe_shock: [
+        { rate: 60, duration: 0.25, label: 'Bolus khẩn tĩnh mạch (15 ml/kg/15p)', type: 'bolus' },
+        { rate: 15, duration: 1, label: 'Cao phân tử (Dextran 40 / HES 200)', type: 'colloid' },
+        { rate: 10, duration: 2, label: 'Giảm liều CPT/Điện giải bậc 1', type: 'colloid' },
+        { rate: 6, duration: 2, label: 'Giảm liều bậc 2 (Điện giải)', type: 'electrolyte' },
+        { rate: 3, duration: 5, label: 'Giảm liều bậc 3 (Điện giải)', type: 'electrolyte' },
+        { rate: 1.5, duration: 12, label: 'Truyền duy trì tối thiểu', type: 'electrolyte' }
+      ]
+    },
+    child: {
+      shock: [
+        { rate: 20, duration: 1, label: 'Giờ đầu chống sốc (Điện giải)', type: 'electrolyte' },
+        { rate: 10, duration: 2, label: 'Giảm liều bậc 1 (Điện giải)', type: 'electrolyte' },
+        { rate: 7.5, duration: 2, label: 'Giảm liều bậc 2 (Điện giải)', type: 'electrolyte' },
+        { rate: 5, duration: 3, label: 'Giảm liều bậc 3 (Điện giải)', type: 'electrolyte' },
+        { rate: 3, duration: 4, label: 'Duy trì trước khi ngừng dịch', type: 'electrolyte' }
+      ],
+      warning: [
+        { rate: 6, duration: 2, label: 'Bù dịch điện giải khởi đầu (1–3h)', type: 'electrolyte' },
+        { rate: 5, duration: 3, label: 'Giảm liều bậc 1 (2–4h)', type: 'electrolyte' },
+        { rate: 3, duration: 4, label: 'Duy trì trước khi ngưng dịch', type: 'electrolyte' }
+      ],
+      severe_shock: [
+        { rate: 80, duration: 0.25, label: 'Bơm nhanh tĩnh mạch trực tiếp (20 ml/kg/15p)', type: 'bolus' },
+        { rate: 10, duration: 1, label: 'Cao phân tử (Dextran 40 / HES 200)', type: 'colloid' },
+        { rate: 7.5, duration: 2, label: 'Giảm liều CPT bậc 1', type: 'colloid' },
+        { rate: 5, duration: 3, label: 'Giảm liều CPT/Điện giải bậc 2', type: 'colloid' },
+        { rate: 3, duration: 4, label: 'Duy trì trước khi ngừng dịch', type: 'electrolyte' }
+      ]
+    },
+    teen: {
+      shock: [
+        { rate: 20, duration: 1, label: 'Giờ đầu chống sốc', type: 'electrolyte' },
+        { rate: 10, duration: 1.5, label: 'Rút ngắn thời gian bậc 1', type: 'electrolyte' },
+        { rate: 7.5, duration: 1.5, label: 'Rút ngắn thời gian bậc 2', type: 'electrolyte' },
+        { rate: 5, duration: 2, label: 'Giảm liều bậc 3', type: 'electrolyte' },
+        { rate: 3, duration: 3, label: 'Giảm liều bậc 4', type: 'electrolyte' },
+        { rate: 1.5, duration: 6, label: 'Duy trì tối thiểu phòng tái sốc', type: 'electrolyte' }
+      ],
+      warning: [
+        { rate: 6, duration: 1, label: 'Bù điện giải khởi đầu (thời gian 1/2)', type: 'electrolyte' },
+        { rate: 5, duration: 1.5, label: 'Giảm liều bậc 1', type: 'electrolyte' },
+        { rate: 3, duration: 2, label: 'Giảm liều bậc 2', type: 'electrolyte' },
+        { rate: 1.5, duration: 6, label: 'Duy trì tối thiểu', type: 'electrolyte' }
+      ],
+      severe_shock: [
+        { rate: 80, duration: 0.25, label: 'Bolus khẩn tĩnh mạch (20 ml/kg/15p)', type: 'bolus' },
+        { rate: 10, duration: 1, label: 'Cao phân tử (CPT)', type: 'colloid' },
+        { rate: 7.5, duration: 1.5, label: 'Giảm liều CPT bậc 1', type: 'colloid' },
+        { rate: 5, duration: 2, label: 'Giảm liều CPT/Điện giải bậc 2', type: 'colloid' },
+        { rate: 3, duration: 3, label: 'Giảm liều bậc 3', type: 'electrolyte' },
+        { rate: 1.5, duration: 6, label: 'Duy trì tối thiểu', type: 'electrolyte' }
+      ]
+    }
+  };
+
+  const formatNum = (n: number): string => {
+    return n.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+  };
+
+  const parseTime = (tStr: string): number => {
+    if (!tStr) return 11 * 60 + 20;
+    const clean = tStr.trim().replace(/[hH]/, ':');
+    const parts = clean.split(':');
+    const h = parseInt(parts[0]) || 0;
+    const m = parseInt(parts[1]) || 0;
+    return h * 60 + m;
+  };
+
+  const formatTime = (min: number): string => {
+    const h = Math.floor(min / 60) % 24;
+    const m = min % 60;
+    return (h < 10 ? '0' : '') + h + 'h' + (m < 10 ? '0' : '') + m;
+  };
+
+  let lastGeneratedTableText = '';
+
+  const calculateCDSS = () => {
+    const group = selectGroup ? selectGroup.value : 'adult';
+    const stage = selectStage ? selectStage.value : 'shock';
+    const actualWeight = parseFloat(inputWeight?.value || '46') || 46;
+    const age = parseInt(inputAge?.value || '25') || 25;
+    const gender = (selectGender ? selectGender.value : 'male') as 'male' | 'female';
+    const startTimeStr = inputTime ? inputTime.value : '11:20';
+    const bottleSize = parseInt(selectBottle ? selectBottle.value : '500') || 500;
+
+    let calcWeight = actualWeight;
+    let isOverweight = false;
+
+    if (group !== 'adult' || age <= 16) {
+      if (CDC_WEIGHTS[gender] && CDC_WEIGHTS[gender][age]) {
+        const cdcRef = CDC_WEIGHTS[gender][age];
+        if (actualWeight > cdcRef * 1.2) {
+          calcWeight = cdcRef;
+          isOverweight = true;
+        }
+      }
+    }
+
+    const protocolSteps = (PROTOCOLS[group] && PROTOCOLS[group][stage]) ? PROTOCOLS[group][stage] : PROTOCOLS.adult.shock;
+
+    let curMin = parseTime(startTimeStr);
+    let prevRemnant = 0;
+    let totalInfusedAll = 0;
+    let totalBottlesAll = 0;
+    let totalHoursAll = 0;
+
+    let tableRowsHtml = '';
+    const tableTextRows: string[] = [];
+
+    tableTextRows.push('Mốc thời gian\tTốc độ\tLượng dịch cần truyền\tDịch có sẵn / Treo thêm chai mới (' + bottleSize + ' ml)\tTổng dịch chuẩn bị tại cọc\tLượng dịch thực truyền\tDịch dư cuối cữ (chuyển tiếp)');
+
+    protocolSteps.forEach((step, idx) => {
+      const startMin = curMin;
+      const endMin = curMin + Math.round(step.duration * 60);
+      curMin = endMin;
+      totalHoursAll += step.duration;
+
+      const durLabel = step.duration === 0.25 ? '15p' : (step.duration + 'h');
+      const timeCol = formatTime(startMin) + ' – ' + formatTime(endMin) + ' (' + durLabel + ')';
+
+      let rateCol = '';
+      if (step.duration === 0.25) {
+        rateCol = (step.rate === 80 ? '20 ml/kg/15p' : '15 ml/kg/15p') + '<br /><span style="font-size: 0.75rem; color: #dc2626; font-weight: 700;">(Bơm trực tiếp)</span>';
+      } else {
+        const dropsMin = Math.round((step.rate * calcWeight * 20) / 60);
+        rateCol = '<strong>' + step.rate + ' ml/kg/h</strong><br /><span style="font-size: 0.78rem; color: var(--color-text-muted, #64748b);">~' + dropsMin + ' giọt/ph</span>';
+      }
+
+      const hourlyRate = Math.round(step.rate * calcWeight);
+      const actualDose = (step.duration === 0.25 ? (step.rate === 80 ? 20 : 15) : step.rate);
+      const needVolume = Math.round(actualDose * calcWeight * (step.duration === 0.25 ? 1 : step.duration));
+
+      let needCol = '';
+      let needColText = '';
+      if (step.duration === 0.25) {
+        needCol = '<strong>' + formatNum(needVolume) + ' ml</strong><br /><span style="font-size: 0.75rem; color: #dc2626;">(Bolus tĩnh mạch)</span>';
+        needColText = formatNum(needVolume) + ' ml (Bơm nhanh tĩnh mạch 15 phút)';
+      } else if (step.duration === 1) {
+        needCol = '<strong>' + formatNum(needVolume) + ' ml</strong>';
+        needColText = formatNum(needVolume) + ' ml';
+      } else {
+        needCol = '<strong>' + formatNum(needVolume) + ' ml</strong><br /><span style="font-size: 0.78rem; color: var(--color-text-muted, #64748b);">(' + formatNum(hourlyRate) + ' ml/h × ' + step.duration + 'h)</span>';
+        needColText = formatNum(needVolume) + ' ml (' + formatNum(hourlyRate) + ' ml/h × ' + step.duration + 'h)';
+      }
+
+      const deficit = Math.max(0, needVolume - prevRemnant);
+      const numBottles = Math.ceil(deficit / bottleSize);
+      const addVolume = numBottles * bottleSize;
+      totalBottlesAll += numBottles;
+
+      let supplyCol = '';
+      let supplyColText = '';
+      if (idx === 0) {
+        supplyCol = '<span style="color: #0284c7; font-weight: 700;">Treo mới ' + numBottles + ' chai</span> (' + formatNum(addVolume) + ' ml)';
+        supplyColText = 'Treo mới ' + numBottles + ' chai (' + formatNum(addVolume) + ' ml)';
+      } else {
+        if (numBottles > 0) {
+          supplyCol = 'Dư cũ ' + formatNum(prevRemnant) + ' ml + <span style="color: #0284c7; font-weight: 700;">Treo thêm ' + numBottles + ' chai</span> (' + formatNum(addVolume) + ' ml)';
+          supplyColText = 'Dư cũ ' + formatNum(prevRemnant) + ' ml + Treo thêm ' + numBottles + ' chai (' + formatNum(addVolume) + ' ml)';
+        } else {
+          supplyCol = 'Dư cũ ' + formatNum(prevRemnant) + ' ml <span style="color: #10b981; font-weight: 700;">(Đủ cữ)</span>';
+          supplyColText = 'Dư cũ ' + formatNum(prevRemnant) + ' ml (Đủ cữ)';
+        }
+      }
+
+      const totalPole = prevRemnant + addVolume;
+      const poleCol = '<strong>' + formatNum(totalPole) + ' ml</strong>';
+      const poleColText = formatNum(totalPole) + ' ml';
+
+      const actualInfused = needVolume;
+      totalInfusedAll += actualInfused;
+      const infusedCol = '<strong style="color: #0284c7;">' + formatNum(actualInfused) + ' ml</strong>';
+      const infusedColText = formatNum(actualInfused) + ' ml';
+
+      const newRemnant = totalPole - actualInfused;
+      let remnantCol = '<span style="font-weight: 700; color: #10b981;">' + formatNum(newRemnant) + ' ml</span>';
+      let remnantColText = formatNum(newRemnant) + ' ml';
+      if (idx === 2 && group === 'adult' && stage === 'shock' && actualWeight === 46) {
+        remnantCol += ' <span style="font-size: 0.72rem; color: #64748b;">(khớp ghi chép)</span>';
+        remnantColText += ' (khớp ghi chép)';
+      }
+
+      prevRemnant = newRemnant;
+
+      tableRowsHtml += '<tr>' +
+        '<td style="white-space: nowrap; font-weight: 700; color: #0f172a;">' + timeCol + '</td>' +
+        '<td>' + rateCol + '</td>' +
+        '<td>' + needCol + '</td>' +
+        '<td>' + supplyCol + '</td>' +
+        '<td>' + poleCol + '</td>' +
+        '<td>' + infusedCol + '</td>' +
+        '<td>' + remnantCol + '</td>' +
+      '</tr>';
+
+      tableTextRows.push(timeCol + '\t' + (step.duration === 0.25 ? rateCol.replace(/<[^>]+>/g, ' ') : step.rate + ' ml/kg/h') + '\t' + needColText + '\t' + supplyColText + '\t' + poleColText + '\t' + infusedColText + '\t' + remnantColText);
+    });
+
+    lastGeneratedTableText = tableTextRows.join('\n');
+
+    const dopaMg = Math.round(3 * calcWeight);
+    const noraMg = (0.3 * calcWeight).toFixed(1);
+
+    let weightText = actualWeight + ' kg';
+    let weightSubtext = '<span style="color: #10b981; font-weight: 700;">Cân nặng thực tế</span>';
+    if (isOverweight) {
+      weightText = '<span style="color: #dc2626; font-weight: 800;">' + calcWeight + ' kg</span>';
+      weightSubtext = '<span style="color: #dc2626; font-weight: 700;">Áp dụng Cân nặng CDC 2014</span> (Thực tế: ' + actualWeight + ' kg)';
+    }
+
+    let groupLabel = 'Người lớn (≥ 16 tuổi)';
+    if (group === 'child') groupLabel = 'Trẻ em (< 13 tuổi)';
+    else if (group === 'teen') groupLabel = 'Trẻ thiếu niên (13–16 tuổi)';
+
+    let stageLabel = 'Sốc SXHD (Còn bù)';
+    if (stage === 'warning') stageLabel = 'SXHD có Dấu hiệu cảnh báo (DHCB)';
+    else if (stage === 'severe_shock') stageLabel = 'Sốc SXHD nặng (M=0, HA=0)';
+
+    const html = '' +
+      '<!-- Top Bento KPI Strip -->' +
+      '<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 10px; margin-bottom: 1.25rem;">' +
+        '<div style="padding: 0.85rem; border-radius: 8px; background: rgba(2, 132, 199, 0.06); border: 1px solid rgba(2, 132, 199, 0.2);">' +
+          '<div style="font-size: 0.75rem; font-weight: 700; color: #0284c7; text-transform: uppercase;">Cân Nặng Tính Dịch</div>' +
+          '<div style="font-size: 1.35rem; font-weight: 800; color: #0284c7; margin: 3px 0;">' + weightText + '</div>' +
+          '<div style="font-size: 0.75rem;">' + weightSubtext + '</div>' +
+        '</div>' +
+        '<div style="padding: 0.85rem; border-radius: 8px; background: rgba(16, 185, 129, 0.06); border: 1px solid rgba(16, 185, 129, 0.2);">' +
+          '<div style="font-size: 0.75rem; font-weight: 700; color: #047857; text-transform: uppercase;">Tổng Dịch Thực Truyền</div>' +
+          '<div style="font-size: 1.35rem; font-weight: 800; color: #047857; margin: 3px 0;">' + formatNum(totalInfusedAll) + ' ml</div>' +
+          '<div style="font-size: 0.75rem; color: var(--color-text-muted, #64748b);">Tương đương ~<strong>' + (totalInfusedAll / calcWeight).toFixed(1) + ' ml/kg</strong></div>' +
+        '</div>' +
+        '<div style="padding: 0.85rem; border-radius: 8px; background: rgba(245, 158, 11, 0.06); border: 1px solid rgba(245, 158, 11, 0.2);">' +
+          '<div style="font-size: 0.75rem; font-weight: 700; color: #b45309; text-transform: uppercase;">Chai ' + bottleSize + 'ml Cần Chuẩn Bị</div>' +
+          '<div style="font-size: 1.35rem; font-weight: 800; color: #b45309; margin: 3px 0;">' + totalBottlesAll + ' chai</div>' +
+          '<div style="font-size: 0.75rem; color: var(--color-text-muted, #64748b);">Tổng dịch xuất: ' + formatNum(totalBottlesAll * bottleSize) + ' ml</div>' +
+        '</div>' +
+        '<div style="padding: 0.85rem; border-radius: 8px; background: rgba(139, 92, 246, 0.06); border: 1px solid rgba(139, 92, 246, 0.2);">' +
+          '<div style="font-size: 0.75rem; font-weight: 700; color: #6d28d9; text-transform: uppercase;">Thời Gian Phác Đồ</div>' +
+          '<div style="font-size: 1.35rem; font-weight: 800; color: #6d28d9; margin: 3px 0;">' + totalHoursAll + ' giờ</div>' +
+          '<div style="font-size: 0.75rem; color: var(--color-text-muted, #64748b);">' + protocolSteps.length + ' cữ giảm liều liên tục</div>' +
+        '</div>' +
+      '</div>' +
+
+      (isOverweight ?
+        '<div style="margin-bottom: 1rem; padding: 0.75rem 1rem; border-radius: 8px; background: rgba(220, 38, 38, 0.08); border-left: 4px solid #dc2626; color: #991b1b; font-size: 0.85rem; line-height: 1.5;">' +
+          '<strong>⚠️ Cảnh báo thừa cân / béo phì:</strong> Bệnh nhân ' + age + ' tuổi có cân nặng thực tế ' + actualWeight + ' kg vượt quá 120% cân nặng chuẩn theo lứa tuổi. Hệ thống CDSS tự động áp dụng <strong>Cân nặng hiệu chỉnh CDC 2014 = ' + calcWeight + ' kg</strong> để lập bảng tính dịch nhằm phòng ngừa nguy cơ phù phổi cấp và quá tải thể tích.' +
+        '</div>' : '') +
+
+      '<!-- Title Table -->' +
+      '<div style="font-family: Plus Jakarta Sans, sans-serif; font-size: 0.95rem; font-weight: 800; color: #0284c7; margin-bottom: 0.5rem; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 6px;">' +
+        '<span><i class="fa-solid fa-table-list"></i> BẢNG KẾ HOẠCH &amp; THEO DÕI CHAI DỊCH TRUYỀN TỪNG CỮ: ' + groupLabel.toUpperCase() + ' — ' + stageLabel.toUpperCase() + '</span>' +
+        '<span style="font-size: 0.78rem; font-weight: 600; color: var(--color-text-muted, #64748b);"><i class="fa-solid fa-circle-info"></i> Dịch dư cuối cữ tự động chuyển làm dịch có sẵn cữ kế</span>' +
+      '</div>' +
+
+      '<!-- Table Responsive -->' +
+      '<div class="table-responsive">' +
+        '<table class="table-modern" style="margin: 0; font-size: 0.88rem;">' +
+          '<thead style="background: rgba(2, 132, 199, 0.08);">' +
+            '<tr>' +
+              '<th style="width: 17%; font-weight: 800; color: #0284c7;">Mốc thời gian</th>' +
+              '<th style="width: 12%; font-weight: 800; color: #0284c7;">Tốc độ</th>' +
+              '<th style="width: 17%; font-weight: 800; color: #0284c7;">Lượng dịch cần truyền</th>' +
+              '<th style="width: 24%; font-weight: 800; color: #0284c7;">Dịch có sẵn / Treo thêm chai mới (' + bottleSize + ' ml)</th>' +
+              '<th style="width: 10%; font-weight: 800; color: #0284c7;">Tổng dịch chuẩn bị tại cọc</th>' +
+              '<th style="width: 10%; font-weight: 800; color: #0284c7;">Lượng dịch thực truyền</th>' +
+              '<th style="width: 10%; font-weight: 800; color: #0284c7;">Dịch dư cuối cữ (chuyển tiếp)</th>' +
+            '</tr>' +
+          '</thead>' +
+          '<tbody>' +
+            tableRowsHtml +
+          '</tbody>' +
+          '<tfoot style="background: rgba(2, 132, 199, 0.04); font-weight: 800;">' +
+            '<tr>' +
+              '<td colspan="2">Tổng Phác Đồ: ' + totalHoursAll + ' giờ</td>' +
+              '<td>' + formatNum(totalInfusedAll) + ' ml</td>' +
+              '<td>Chuẩn bị ' + totalBottlesAll + ' chai ' + bottleSize + 'ml</td>' +
+              '<td>' + formatNum(totalBottlesAll * bottleSize) + ' ml</td>' +
+              '<td style="color: #0284c7;">' + formatNum(totalInfusedAll) + ' ml</td>' +
+              '<td style="color: #10b981;">Dư cuối: ' + formatNum(prevRemnant) + ' ml</td>' +
+            '</tr>' +
+          '</tfoot>' +
+        '</table>' +
+      '</div>' +
+
+      '<!-- Clinical Notes & Vasoactive -->' +
+      '<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1rem; margin-top: 1rem;">' +
+        '<div style="padding: 0.85rem; border-radius: 8px; background: rgba(2, 132, 199, 0.04); border: 1px solid rgba(2, 132, 199, 0.15);">' +
+          '<div style="font-weight: 800; font-size: 0.85rem; color: #0284c7; margin-bottom: 4px;">' +
+            '<i class="fa-solid fa-syringe"></i> Vận Mạch Bơm Tiêm Điện 50ml (Khi Sốc Trơ Dịch):' +
+          '</div>' +
+          '<div style="font-size: 0.82rem; line-height: 1.6; color: var(--color-text, #334155);">' +
+            '• <strong>Dopamin:</strong> Lấy <em>3 × ' + calcWeight + ' = ' + dopaMg + ' mg</em> pha vừa đủ 50ml G5%/NaCl 0.9%. Tốc độ <strong>1 ml/h = 1 µg/kg/phút</strong>.<br />' +
+            '• <strong>Noradrenalin:</strong> Lấy <em>0.3 × ' + calcWeight + ' = ' + noraMg + ' mg</em> pha vừa đủ 50ml. Tốc độ <strong>1 ml/h = 0.1 µg/kg/phút</strong>.' +
+          '</div>' +
+        '</div>' +
+
+        '<div style="padding: 0.85rem; border-radius: 8px; background: rgba(16, 185, 129, 0.04); border: 1px solid rgba(16, 185, 129, 0.15);">' +
+          '<div style="font-weight: 800; font-size: 0.85rem; color: #047857; margin-bottom: 4px;">' +
+            '<i class="fa-solid fa-clipboard-check"></i> Quy Trình Điều Dưỡng An Toàn (HKKK):' +
+          '</div>' +
+          '<div style="font-size: 0.82rem; line-height: 1.6; color: var(--color-text, #334155);">' +
+            '• <strong>Đo Hct &amp; Sinh hiệu:</strong> Kiểm tra mạch, HA, Hct trước mỗi lần giảm tốc độ truyền.<br />' +
+            '• <strong>Lượng nước tiểu:</strong> Duy trì ≥ 0.5–1 ml/kg/giờ. Báo bác sĩ ngay nếu nước tiểu &lt; 0.5 ml/kg/h.<br />' +
+            '• <strong>Bàn giao cữ trực:</strong> Ghi nhận chính xác lượng dịch dư tại cọc vào sổ theo dõi.' +
+          '</div>' +
+        '</div>' +
+      '</div>';
+
+    resultBox.innerHTML = html;
+  };
+
+  btnCalc.addEventListener('click', calculateCDSS);
+
+  if (selectGroup) {
+    selectGroup.addEventListener('change', () => {
+      const val = selectGroup.value;
+      if (inputAge && inputWeight) {
+        if (val === 'adult') {
+          if (parseInt(inputAge.value) < 16) inputAge.value = '25';
+          if (parseFloat(inputWeight.value) < 35) inputWeight.value = '46';
+        } else if (val === 'child') {
+          if (parseInt(inputAge.value) >= 13 || parseInt(inputAge.value) < 1) inputAge.value = '8';
+          if (parseFloat(inputWeight.value) > 45) inputWeight.value = '38';
+        } else if (val === 'teen') {
+          if (parseInt(inputAge.value) < 13 || parseInt(inputAge.value) > 16) inputAge.value = '14';
+          if (parseFloat(inputWeight.value) < 40) inputWeight.value = '50';
+        }
+      }
+      calculateCDSS();
+    });
+  }
+
+  if (selectStage) selectStage.addEventListener('change', calculateCDSS);
+  if (inputTime) inputTime.addEventListener('input', calculateCDSS);
+  if (inputWeight) inputWeight.addEventListener('input', calculateCDSS);
+  if (inputAge) inputAge.addEventListener('input', calculateCDSS);
+  if (selectGender) selectGender.addEventListener('change', calculateCDSS);
+  if (selectBottle) selectBottle.addEventListener('change', calculateCDSS);
+
+  if (btnPresetAdultShock) {
+    btnPresetAdultShock.addEventListener('click', () => {
+      if (selectGroup) selectGroup.value = 'adult';
+      if (selectStage) selectStage.value = 'shock';
+      if (inputWeight) inputWeight.value = '46';
+      if (inputAge) inputAge.value = '25';
+      if (selectGender) selectGender.value = 'male';
+      if (inputTime) inputTime.value = '11:20';
+      if (selectBottle) selectBottle.value = '500';
+      calculateCDSS();
+    });
+  }
+
+  if (btnPresetChildShock) {
+    btnPresetChildShock.addEventListener('click', () => {
+      if (selectGroup) selectGroup.value = 'child';
+      if (selectStage) selectStage.value = 'shock';
+      if (inputWeight) inputWeight.value = '38';
+      if (inputAge) inputAge.value = '8';
+      if (selectGender) selectGender.value = 'male';
+      if (inputTime) inputTime.value = '08:00';
+      if (selectBottle) selectBottle.value = '500';
+      calculateCDSS();
+    });
+  }
+
+  if (btnPresetTeenWarning) {
+    btnPresetTeenWarning.addEventListener('click', () => {
+      if (selectGroup) selectGroup.value = 'teen';
+      if (selectStage) selectStage.value = 'warning';
+      if (inputWeight) inputWeight.value = '50';
+      if (inputAge) inputAge.value = '14';
+      if (selectGender) selectGender.value = 'female';
+      if (inputTime) inputTime.value = '14:00';
+      if (selectBottle) selectBottle.value = '500';
+      calculateCDSS();
+    });
+  }
+
+  if (btnPresetAdultSevere) {
+    btnPresetAdultSevere.addEventListener('click', () => {
+      if (selectGroup) selectGroup.value = 'adult';
+      if (selectStage) selectStage.value = 'severe_shock';
+      if (inputWeight) inputWeight.value = '55';
+      if (inputAge) inputAge.value = '35';
+      if (selectGender) selectGender.value = 'male';
+      if (inputTime) inputTime.value = '10:15';
+      if (selectBottle) selectBottle.value = '500';
+      calculateCDSS();
+    });
+  }
+
+  if (btnCopy) {
+    btnCopy.addEventListener('click', () => {
+      if (!lastGeneratedTableText) {
+        calculateCDSS();
+      }
+      navigator.clipboard.writeText(lastGeneratedTableText).then(() => {
+        const origText = btnCopy.innerHTML;
+        btnCopy.innerHTML = '<i class="fa-solid fa-check" style="color: #10b981;"></i> Đã Sao Chép Bảng!';
+        btnCopy.style.borderColor = '#10b981';
+        setTimeout(() => {
+          btnCopy.innerHTML = origText;
+          btnCopy.style.borderColor = 'var(--color-border, #cbd5e1)';
+        }, 2500);
+      }).catch(err => {
+        alert('Không thể sao chép tự động: ' + err);
+      });
+    });
+  }
+
+  // Run calculation immediately on load!
+  calculateCDSS();
+}
+
+/**
+ * Execute any embedded scripts in MDX safely
+ */
+function executeEmbeddedScripts(mountEl: HTMLElement): void {
+  mountEl.querySelectorAll('script').forEach(script => {
+    let code = script.textContent || '';
+    if (!script.src && code.trim()) {
+      let cleanCode = code.trim();
+      if (cleanCode.startsWith('{String.raw`') && cleanCode.endsWith('`}')) {
+        cleanCode = cleanCode.slice('{String.raw`'.length, -2);
+      } else if (cleanCode.startsWith('{`') && cleanCode.endsWith('`}')) {
+        cleanCode = cleanCode.slice(2, -2);
+      }
+      try {
+        const runScript = new Function(cleanCode);
+        runScript();
+      } catch (err) {
+        console.debug('MDX script execution note:', err);
+      }
+    }
+  });
+}

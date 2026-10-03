@@ -1,0 +1,514 @@
+/**
+ * guidelines-dashboard.css
+ * Dashboard Analytics, Bento KPI Cards & SVG Visualization Styles
+ * CliniPortal 2026 Medical Design System — Pure Vanilla CSS3
+ */
+
+/* ==========================================================================
+   Dashboard Layout & Bento Grid
+   ========================================================================== */
+.gd-dashboard {
+  padding: 0.5rem 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.gd-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 1rem;
+}
+
+.gd-kpi-card {
+  background: var(--surface);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-xl);
+  padding: 1.25rem;
+  position: relative;
+  overflow: hidden;
+  box-shadow: var(--shadow-xs);
+  transition: all var(--tr-fast);
+}
+
+.gd-kpi-card:hover {
+  transform: translateY(-3px);
+  box-shadow: var(--shadow-md);
+  border-color: var(--accent);
+}
+
+.gd-kpi-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 80px;
+  height: 80px;
+  border-radius: 50%;
+  background: var(--kpi-color, var(--accent-light));
+  transform: translate(30%, -30%);
+  pointer-events: none;
+}
+
+.gd-kpi-label {
+  font-size: 0.72rem;
+  font-weight: 800;
+  color: var(--text-faint);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-bottom: 0.4rem;
+}
+
+.gd-kpi-value {
+  font-family: var(--font-display);
+  font-size: 2.1rem;
+  font-weight: 800;
+  color: var(--text);
+  line-height: 1.1;
+  margin-bottom: 0.25rem;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+}
+
+.gd-kpi-sub {
+  font-size: 0.73rem;
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
+.gd-kpi-icon {
+  font-size: 1.4rem;
+  position: absolute;
+  top: 1.15rem;
+  right: 1.15rem;
+  opacity: 0.7;
+}
+
+/* ==========================================================================
+   Charts Grid Rows
+   ========================================================================== */
+.gd-charts-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.25rem;
+}
+
+@media (max-width: 768px) {
+  .gd-charts-row {
+    grid-template-columns: 1fr;
+  }
+}
+
+.gd-charts-row-3 {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 1.25rem;
+}
+
+@media (max-width: 900px) {
+  .gd-charts-row-3 {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+@media (max-width: 600px) {
+  .gd-charts-row-3 {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ==========================================================================
+   Chart Card
+   ========================================================================== */
+.gd-chart-card {
+  background: var(--surface);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-xl);
+  padding: 1.35rem;
+  box-shadow: var(--shadow-xs);
+  transition: all var(--tr-fast);
+}
+
+.gd-chart-card:hover {
+  box-shadow: var(--shadow-sm);
+  border-color: rgba(2, 132, 199, 0.3);
+}
+
+.gd-chart-title {
+  font-family: var(--font-display);
+  font-size: 0.92rem;
+  font-weight: 800;
+  color: var(--text);
+  margin-bottom: 1rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  letter-spacing: -0.01em;
+}
+
+.gd-chart-subtitle {
+  font-size: 0.72rem;
+  font-weight: 500;
+  color: var(--text-muted);
+  margin-left: 0.25rem;
+}
+
+/* ==========================================================================
+   Donut Chart
+   ========================================================================== */
+.gd-donut-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+}
+
+.gd-donut-svg {
+  flex-shrink: 0;
+  overflow: visible;
+}
+
+.gd-donut-legend {
+  flex: 1;
+  min-width: 0;
+}
+
+.gd-donut-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+  font-size: 0.78rem;
+  color: var(--text);
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  padding: 3px 6px;
+  transition: background var(--tr-fast);
+}
+
+.gd-donut-legend-item:hover {
+  background: var(--surface-2);
+  color: var(--accent);
+}
+
+.gd-donut-legend-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.gd-donut-legend-label {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.gd-donut-legend-count {
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  font-size: 0.8rem;
+}
+
+.gd-donut-path {
+  transition: opacity 0.2s, transform 0.2s;
+  transform-origin: center;
+}
+
+.gd-donut-path:hover {
+  opacity: 0.85;
+  transform: scale(1.03);
+  cursor: pointer;
+}
+
+/* ==========================================================================
+   Horizontal Bar Chart
+   ========================================================================== */
+.gd-hbar-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.gd-hbar-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.gd-hbar-label {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--text);
+  min-width: 85px;
+  max-width: 130px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-align: right;
+  flex-shrink: 0;
+}
+
+.gd-hbar-track {
+  flex: 1;
+  height: 8px;
+  background: var(--surface-2);
+  border-radius: var(--radius-full);
+  overflow: hidden;
+}
+
+.gd-hbar-fill {
+  height: 100%;
+  border-radius: var(--radius-full);
+  width: 0%;
+  transition: width 1s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.gd-hbar-count {
+  font-size: 0.75rem;
+  font-weight: 800;
+  color: var(--text-muted);
+  min-width: 28px;
+  text-align: left;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ==========================================================================
+   Impact Donut Micro
+   ========================================================================== */
+.gd-impact-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.gd-impact-badge {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--surface-2);
+  border-radius: var(--radius-md);
+  padding: 10px 12px;
+  border: 1px solid var(--border-light);
+}
+
+.gd-impact-badge-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.gd-impact-badge-info {
+  min-width: 0;
+}
+
+.gd-impact-badge-label {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.gd-impact-badge-count {
+  font-family: var(--font-display);
+  font-size: 1.15rem;
+  font-weight: 800;
+  color: var(--text);
+  line-height: 1;
+}
+
+/* ==========================================================================
+   Year Timeline Bar Chart
+   ========================================================================== */
+.gd-year-bars {
+  display: flex;
+  align-items: flex-end;
+  gap: 6px;
+  height: 140px;
+  padding-top: 1rem;
+}
+
+.gd-year-bar-col {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  flex: 1;
+  min-width: 0;
+}
+
+.gd-year-bar-fill {
+  width: 100%;
+  border-radius: 4px 4px 0 0;
+  background: var(--accent);
+  opacity: 0.85;
+  cursor: pointer;
+  transition: opacity 0.2s, transform 0.2s;
+  height: 0;
+}
+
+.gd-year-bar-fill:hover {
+  opacity: 1;
+  transform: scaleY(1.05);
+  transform-origin: bottom;
+}
+
+.gd-year-bar-label {
+  font-size: 0.68rem;
+  color: var(--text-muted);
+  font-weight: 700;
+  text-align: center;
+}
+
+/* ==========================================================================
+   "Guideline of the Day" Widget
+   ========================================================================== */
+.gd-gotd-card {
+  background: var(--accent-gradient-subtle);
+  border: 1.5px solid var(--border-light);
+  border-left: 4px solid var(--accent);
+  border-radius: var(--radius-xl);
+  padding: 1.35rem;
+}
+
+.gd-gotd-eyebrow {
+  font-size: 0.7rem;
+  font-weight: 800;
+  color: var(--accent);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-bottom: 0.5rem;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.gd-gotd-pulse {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent);
+  animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.5; transform: scale(1.4); }
+}
+
+.gd-gotd-title {
+  font-family: var(--font-display);
+  font-size: 1.05rem;
+  font-weight: 800;
+  color: var(--text);
+  margin-bottom: 0.5rem;
+  line-height: 1.35;
+}
+
+.gd-gotd-meta {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  display: flex;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.85rem;
+}
+
+.gd-gotd-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--accent);
+  text-decoration: none;
+  padding: 6px 14px;
+  border: 1.5px solid var(--accent);
+  border-radius: var(--radius-md);
+  transition: all var(--tr-fast);
+  background: var(--surface);
+}
+
+.gd-gotd-action:hover {
+  background: var(--accent);
+  color: #ffffff;
+  transform: translateY(-1px);
+}
+
+/* ==========================================================================
+   Reading Streak Widget
+   ========================================================================== */
+.gd-streak-widget {
+  background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+  border-radius: var(--radius-xl);
+  padding: 1.25rem 1.4rem;
+  color: #fff;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  box-shadow: var(--shadow-sm);
+}
+
+[data-theme="dark"] .gd-streak-widget {
+  background: linear-gradient(135deg, var(--surface) 0%, var(--surface-2) 100%);
+  border: 1px solid var(--border-light);
+}
+
+.gd-streak-icon {
+  font-size: 2.3rem;
+  flex-shrink: 0;
+}
+
+.gd-streak-count {
+  font-family: var(--font-display);
+  font-size: 2.4rem;
+  font-weight: 800;
+  line-height: 1;
+  color: #fbbf24;
+}
+
+.gd-streak-label {
+  font-size: 0.78rem;
+  color: rgba(255,255,255,0.7);
+  margin-top: 2px;
+}
+
+/* ==========================================================================
+   Section Title in Dashboard
+   ========================================================================== */
+.gd-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.75rem;
+}
+
+.gd-section-title {
+  font-size: 0.78rem;
+  font-weight: 800;
+  color: var(--text-faint);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.gd-section-action {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--accent);
+  text-decoration: none;
+  cursor: pointer;
+  transition: opacity var(--tr-fast);
+  background: none;
+  border: none;
+}
+
+.gd-section-action:hover {
+  opacity: 0.8;
+  text-decoration: underline;
+}
+
