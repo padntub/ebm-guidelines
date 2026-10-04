@@ -128,11 +128,11 @@ export function initEbmFuzzySearch(): void {
   });
 }
 
-import { mountEbmController } from './ebm-view';
+import { initGuidelinesApp } from '../guideline-controller';
 
 export function initEbmHub(): void {
   initEbmHealthScore();
   initEbmFuzzySearch();
-  mountEbmController();
+  initGuidelinesApp();
 }
 
